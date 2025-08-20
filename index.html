@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>注音轉換器</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' fill='black'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-size='40' fill='white'>ㄅ</text></svg>"> 
+  <style>
+    body{font-family: system-ui, -apple-system, "PingFang TC", "Microsoft JhengHei", NotoSansTC, Arial; padding:24px; background:#121212; color:#f5f5f5}
+    .card{max-width:820px;margin:24px auto;padding:18px;border-radius:12px;background:#1e1e1e;box-shadow:0 6px 20px rgba(0,0,0,0.5)}
+    h1{font-size:20px;margin:0 0 8px}
+    p.sub{margin:0 0 18px;color:#aaa}
+    textarea{width:100%;height:120px;padding:10px;border-radius:8px;border:1px solid #333;background:#2c2c2c;color:#f5f5f5;resize:vertical;font-size:16px}
+    .row{display:flex;gap:8px;margin-top:12px}
+    button{background:#2563eb;color:#fff;border:none;padding:10px 14px;border-radius:8px;font-weight:600;cursor:pointer}
+    button.secondary{background:#444;color:#fff}
+    .out{margin-top:14px;padding:12px;border-radius:8px;background:#2c2c2c;min-height:48px;white-space:pre-wrap;font-size:16px;color:#f5f5f5}
+    .hint{margin-top:8px;color:#888;font-size:13px}
+    .toast{
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: #2563eb;
+      color: #fff;
+      padding: 10px 16px;
+      border-radius: 8px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.4s;
+      font-size: 14px;
+    }
+    .toast.show{opacity:1;pointer-events:auto;}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>注音轉換器</h1>
+    <p class="sub">輸入誤輸入成英數的注音，按下「轉換」會輸出每個音節，並以中括號包起，支援單行或多行輸入。</p>
+
+    <textarea id="input" placeholder="輸入要轉換的字串（例如: 5j4up 5j03cj04fu4）"></textarea>
+
+    <div class="row">
+      <button id="convert">轉換</button>
+      <button id="clear" class="secondary">清除</button>
+      <button id="copy" class="secondary">複製結果</button>
+    </div>
+
+    <div class="hint">輸出格式範例：對應：[ㄓ ㄨˋ] [ㄧ ㄣ] [ㄓ ㄨㄢˇ] [ㄏ ㄨㄢˋ] [ㄑ ㄧˋ]</div>
+    <div id="output" class="out">（結果會顯示在這裡）</div>
+  </div>
+
+  <div id="toast" class="toast">結果已複製！</div>
+
+  <script>
+    const MAPPING = {
+      '1':'ㄅ','q':'ㄆ','a':'ㄇ','z':'ㄈ',
+      '2':'ㄉ','w':'ㄊ','s':'ㄋ','x':'ㄌ',
+      'e':'ㄍ','d':'ㄎ','c':'ㄏ','r':'ㄐ',
+      'f':'ㄑ','v':'ㄒ','5':'ㄓ','t':'ㄔ',
+      'g':'ㄕ','b':'ㄖ','y':'ㄗ','h':'ㄘ',
+      'n':'ㄙ','u':'ㄧ','j':'ㄨ','m':'ㄩ',
+      '8':'ㄚ','i':'ㄛ','k':'ㄜ',',':'ㄝ',
+      '9':'ㄞ','o':'ㄟ','l':'ㄠ','.':'ㄡ',
+      '0':'ㄢ','p':'ㄣ',';':'ㄤ','/':'ㄥ',
+      '-':'ㄦ'
+    };
+    const TONE_MAP = {'6':'ˊ','3':'ˇ','4':'ˋ','7':'˙'};
+    const TONE_CHARS = new Set(['ˊ','ˇ','ˋ','˙']);
+    const ZHUYIN_CHARS = new Set(Array.from('ㄅㄆㄇㄈㄉㄊㄋㄌㄍㄎㄏㄐㄑㄒㄓㄔㄕㄖㄗㄘㄙㄧㄨㄩㄚㄛㄜㄝㄞㄟㄠㄡㄢㄣㄤㄥㄦˊˇˋ˙'));
+
+    function engnum_to_zhuyin_tokens(s){
+      s = s.toLowerCase();
+      const result_tokens = [];
+      let cur = '';
+      for (let ch of s){
+        if (ch.trim() === ''){
+          if (cur){ result_tokens.push(cur); cur = ''; }
+          continue;
+        }
+        if (TONE_MAP.hasOwnProperty(ch)){
+          cur += TONE_MAP[ch];
+          result_tokens.push(cur);
+          cur = '';
+          continue;
+        }
+        if (MAPPING.hasOwnProperty(ch)){
+          cur += MAPPING[ch];
+          continue;
+        }
+        cur += ch;
+      }
+      if (cur) result_tokens.push(cur);
+      return result_tokens;
+    }
+
+    function tokenize_zhuyin_string(s){
+      const tokens = [];
+      let cur = '';
+      for (let ch of s){
+        if (ch.trim() === ''){
+          if (cur){ tokens.push(cur); cur = ''; }
+          continue;
+        }
+        cur += ch;
+        if (TONE_CHARS.has(ch) || cur.length >= 2){
+          tokens.push(cur);
+          cur = '';
+        }
+      }
+      if (cur) tokens.push(cur);
+      return tokens;
+    }
+
+    function to_bracketed(tokens){
+      return tokens.map(t => `[${t.split('').join(' ')}]`).join(' ');
+    }
+
+    function process_line(line){
+      line = line.trim();
+      if (line === '') return '';
+      let has_zhuyin = false;
+      for (let ch of line){ if (ZHUYIN_CHARS.has(ch)){ has_zhuyin = true; break; } }
+      let tokens;
+      if (has_zhuyin){
+        tokens = tokenize_zhuyin_string(line);
+      } else {
+        tokens = engnum_to_zhuyin_tokens(line);
+      }
+      return to_bracketed(tokens);
+    }
+
+    function convertAll(text){
+      const lines = text.split(/\r?\n/);
+      const outs = lines.map(l => {
+        if (!l.trim()) return '';
+        return '對應：' + process_line(l);
+      }).filter(x => x !== '');
+      return outs.join('\n');
+    }
+
+    const inputEl = document.getElementById('input');
+    const outEl = document.getElementById('output');
+    const toastEl = document.getElementById('toast');
+
+    document.getElementById('convert').addEventListener('click', () => {
+      const text = inputEl.value;
+      outEl.textContent = convertAll(text) || '（無可轉換內容）';
+    });
+
+    document.getElementById('clear').addEventListener('click', () => {
+      inputEl.value = '';
+      outEl.textContent = '（結果會顯示在這裡）';
+    });
+
+    document.getElementById('copy').addEventListener('click', async () => {
+      if (!outEl.textContent) return;
+      try{
+        await navigator.clipboard.writeText(outEl.textContent);
+        toastEl.classList.add('show');
+        setTimeout(()=>{ toastEl.classList.remove('show'); }, 1500);
+      }catch(e){ alert('複製失敗：'+e); }
+    });
+  </script>
+</body>
+</html>
